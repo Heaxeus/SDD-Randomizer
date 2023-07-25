@@ -1,11 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Xml.Serialization;
 using BepInEx;
 using BepInEx.Logging;
 using BepInEx.NET.Common;
 using HarmonyLib;
 using ISurvived;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 
 namespace SDDRandomizer;
 
@@ -27,16 +31,18 @@ public class Plugin : BasePlugin
             original: AccessTools.Method(AccessTools.TypeByName("GettingQuestOne"), "Play"),
             prefix: new HarmonyMethod(typeof(Plugin), nameof(Play_OverwriteChapterOneSkillShop_Prefix))
         );
+
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("Cutscene"), "Play"),
+            prefix: new HarmonyMethod(typeof(Plugin), nameof(Play_CallCutsceneMethod_Prefix))
+        );
+
         Log.LogInfo("Patch Called!");
     }
 
 
     private static Type typeCutscene = typeof(Cutscene);
 
-    private static MethodInfo methodPlay = typeCutscene.GetMethod("Play", BindingFlags.Instance | BindingFlags.Public);
-
-    private static FieldInfo gameFieldInfo =
-        typeCutscene.GetField("game", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private static FieldInfo playerFieldInfo =
         typeCutscene.GetField("player", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -53,6 +59,21 @@ public class Plugin : BasePlugin
     private static FieldInfo cameraFieldInfo =
         typeCutscene.GetField("camera", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    private static FieldInfo topBarPosFieldInfo =
+        typeCutscene.GetField("topBarPos", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    private static FieldInfo botBarPosFieldInfo =
+        typeCutscene.GetField("botBarPos", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    private static FieldInfo dialogueBoxFieldInfo =
+        typeCutscene.GetField("dialogueBox", BindingFlags.Instance | BindingFlags.NonPublic);
+    
+    private static FieldInfo fadeFieldInfo =
+        typeCutscene.GetField("fade", BindingFlags.Instance | BindingFlags.NonPublic);
+    
+    private static FieldInfo notFirstFrameFieldInfo =
+        typeCutscene.GetField("notFirstFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+
 
     private static Type typeGettingQuestOne = AccessTools.TypeByName("GettingQuestOne");
 
@@ -64,17 +85,42 @@ public class Plugin : BasePlugin
 
     private static FieldInfo givenBookFieldInfo =
         typeGettingQuestOne.GetField("givenBook", BindingFlags.Instance | BindingFlags.NonPublic);
-    
-    
-    private static Type typeChapter = typeof(Chapter);
-    
-    private static FieldInfo cutsceneFieldInfo =
-        typeChapter.GetField("currentScene", BindingFlags.Instance | BindingFlags.Public);
-    
-    private static Type typeGame = typeof(Game1);
 
-    private static FieldInfo chapterFieldInfo =
-        typeGame.GetField("currentChapter", BindingFlags.Instance | BindingFlags.Public);
+
+    public static bool Play_CallCutsceneMethod_Prefix()
+    {
+        try
+        {
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(Play_CallCutsceneMethod_Prefix)}:\n\t{ex}");
+            return true;
+        }
+    }
+
+    private static bool creations = true;
+
+
+    private static int state;
+    private static int timer;
+    private static float alpha;
+    private static bool firstFrameOfTheState;
+    private static bool notFirstFrame;
+    private static bool fade;
+    private static bool givenBook;
+    private static bool canSkip;
+    private static bool skippingCutscene;
+    private static bool firstFrameOfCutscene;
+    private static bool allowedToSkip;
+    private static Player player;
+    private static NPC alan;
+    private static NPC paul;
+    private static int topBarPos;
+    private static int botBarPos;
+    private static Camera camera;
+    
 
 
     //public override void Play()
@@ -83,24 +129,90 @@ public class Plugin : BasePlugin
         try
         {
             //_log.LogInfo("Overwrite Method is Running!");
+
+
+            if (creations)
+            {
+                state = (int)stateFieldInfo.GetValue(__instance);
+                timer = (int)timerFieldInfo.GetValue(__instance);
+                firstFrameOfTheState = (bool)firstFrameFieldInfo.GetValue(__instance);
+                givenBook = (bool)givenBookFieldInfo.GetValue(__instance);
+                notFirstFrame = (bool)notFirstFrameFieldInfo.GetValue(__instance);
+                fade = (bool)fadeFieldInfo.GetValue(__instance);
+                alpha = Game1.currentChapter.currentScene.alpha;
+                canSkip = Game1.currentChapter.currentScene.canSkip;
+                skippingCutscene = Game1.currentChapter.currentScene.skippingCutscene;
+                firstFrameOfCutscene = Game1.currentChapter.currentScene.firstFrameOfCutscene;
+                allowedToSkip = Game1.currentChapter.currentScene.allowedToSkip;
+                player = (Player)playerFieldInfo.GetValue(__instance);
+                alan = (NPC)alanFieldInfo.GetValue(__instance);
+                paul = (NPC)paulFieldInfo.GetValue(__instance);
+                topBarPos = (int)topBarPosFieldInfo.GetValue(__instance);
+                botBarPos = (int)botBarPosFieldInfo.GetValue(__instance);
+                camera = (Camera)cameraFieldInfo.GetValue(__instance);
+                
+                creations = false;
+            }
             
-            var player = (Player)playerFieldInfo.GetValue(__instance);
-            var state = (int)stateFieldInfo.GetValue(__instance);
-            var firstFrameOfTheState = (bool)firstFrameFieldInfo.GetValue(__instance);
-            var alan = (NPC)alanFieldInfo.GetValue(__instance);
-            var paul = (NPC)paulFieldInfo.GetValue(__instance);
-            var givenBook = (bool)givenBookFieldInfo.GetValue(__instance);
-            var timer = (int)timerFieldInfo.GetValue(__instance);
-            var camera = (Camera)cameraFieldInfo.GetValue(__instance);
-            var cutscene = (Cutscene)cutsceneFieldInfo.GetValue(__instance);
-            var chapter = (Chapter)chapterFieldInfo.GetValue(cutscene);
-            var game = (Game1)gameFieldInfo.GetValue(chapter);
+            
+            
+            
+            
+            var dialogueBox = (Rectangle)dialogueBoxFieldInfo.GetValue(__instance);
+            
+            
             
             
 
 
+            var game = Game1.g;
 
-            methodPlay.Invoke(cutscene, null);
+           
+
+
+            // var f = typeof(Cutscene).GetMethod("Play").MethodHandle.GetFunctionPointer();
+            // var play = (Func<object>)Activator.CreateInstance(typeof(Func<object>), "Play", f);
+            // play();
+
+
+            var check = true;
+            if (game.PrimaryIsPlayerOne() && HelperMethods.KeyPressed(Keys.Escape) && !skippingCutscene &&
+                allowedToSkip && (state != 0 || !firstFrameOfCutscene))
+            {
+                if (canSkip)
+                    skippingCutscene = true;
+                else
+                    canSkip = true;
+            }
+
+            if (firstFrameOfCutscene)
+            {
+                firstFrameOfCutscene = false;
+                topBarPos = -66;
+                botBarPos = (int)Game1.virtualResolution.Y;
+            }
+
+            game.coopEndingCutscene = true;
+            if (game.coOpMode)
+            {
+                Game1.g.Player2.Position = new Vector2(Game1.g.Player.PositionX, Game1.g.Player.PositionY);
+                Game1.g.Player2.UpdatePosition();
+            }
+
+            ++timer;
+            dialogueBox = new Rectangle(0, (int)Game1.virtualResolution.Y - 120, 1280, 120);
+            firstFrameOfTheState = timer == 1;
+            if (game.CurrentChapter == null || game.CurrentChapter.CurrentMap == null ||
+                game.CurrentChapter.state == Chapter.GameState.dead)
+                check = false;
+            if (check)
+            {
+                foreach (KeyValuePair<string, InteractiveObject> interactiveObject in game.CurrentChapter.CurrentMap
+                             .InteractiveObjects)
+                    interactiveObject.Value.Update();
+            }
+
+
             switch (state)
             {
                 case -5:
@@ -112,7 +224,29 @@ public class Plugin : BasePlugin
                         givenBook = true;
                     }
 
-                    __instance.FadeOut(60f);
+                    if (!notFirstFrame)
+                    {
+                        alpha = 0.0f;
+                        timer = 0;
+                        fade = true;
+                    }
+                    notFirstFrame = true;
+                    if ((double) timer < (double) 60.0f)
+                    {
+                        alpha += 1f / 60.0f;
+                    }
+                    else
+                    {
+                        notFirstFrame = false;
+                        timer = 0;
+                        alpha = -1f;
+                        ++state;
+                        fade = false;
+                    }
+                    
+                    
+                    
+                    
                     Chapter.effectsManager.Update();
                     // return true;
                     break;
@@ -148,7 +282,29 @@ public class Plugin : BasePlugin
                     break;
                 case -3:
                     Chapter.effectsManager.Update();
-                    __instance.FadeIn(60f);
+                    
+                    
+                    if (!notFirstFrame)
+                    {
+                        timer = 0;
+                        fade = true;
+                        alpha = 1f;
+                    }
+                    notFirstFrame = true;
+                    if ((double) timer < (double) 60f)
+                    {
+                        alpha -= 1f / 60f;
+                    }
+                    else
+                    {
+                        notFirstFrame = false;
+                        timer = 0;
+                        alpha = -1f;
+                        ++state;
+                        fade = false;
+                    }
+                    
+                    
                     camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
                     Chapter.effectsManager.fButtonRecs.Clear();
                     Chapter.effectsManager.foregroundFButtonRecs.Clear();
