@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Xml.Serialization;
@@ -28,412 +29,185 @@ public class Plugin : BasePlugin
 
 
         harmony.Patch(
-            original: AccessTools.Method(AccessTools.TypeByName("GettingQuestOne"), "Play"),
-            prefix: new HarmonyMethod(typeof(Plugin), nameof(Play_OverwriteChapterOneSkillShop_Prefix))
+            original: AccessTools.Method(AccessTools.TypeByName("ChapterThree"), "UnlockPartTwoSkills"),
+            prefix: new HarmonyMethod(typeof(Plugin), nameof(UnlockPartTwoSkills_PopulateRandomSkills_Prefix))
         );
 
         harmony.Patch(
-            original: AccessTools.Method(AccessTools.TypeByName("Cutscene"), "Play"),
-            prefix: new HarmonyMethod(typeof(Plugin), nameof(Play_CallCutsceneMethod_Prefix))
+            original: AccessTools.Method(AccessTools.TypeByName("Game1"), "LoadGameContent"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(LoadGameContent_CreateDictionary_Postfix))
+        );
+
+
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("GettingQuestOne"), "Play"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(Play_ModifyShopInventory_Postfix))
+        );
+        
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("MadSkills"), "LoadPassive"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(LoadPassive_RandomizeMadSkills_Postfix))
+        );
+        
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("Prologue"), "Update"),
+            prefix: new HarmonyMethod(typeof(Plugin), nameof(SetVariablesPrologue_SkipDaydream_Prefix))
+        );
+        
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("DarkAlleyway"), "SetDestinationPortals"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(SetDestinationPortals_SkipDaydream_Postfix))
+        );
+        
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("DepositoryOfDoom"), "Update"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(Update_KillLeader_Postfix))
         );
 
         Log.LogInfo("Patch Called!");
     }
 
+    private static Type skillManagerType = typeof(SkillManager);
 
-    private static Type typeCutscene = typeof(Cutscene);
-
-
-    private static FieldInfo playerFieldInfo =
-        typeCutscene.GetField("player", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo stateFieldInfo =
-        typeCutscene.GetField("state", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo firstFrameFieldInfo =
-        typeCutscene.GetField("firstFrameOfTheState", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo timerFieldInfo =
-        typeCutscene.GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo cameraFieldInfo =
-        typeCutscene.GetField("camera", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo topBarPosFieldInfo =
-        typeCutscene.GetField("topBarPos", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo botBarPosFieldInfo =
-        typeCutscene.GetField("botBarPos", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo dialogueBoxFieldInfo =
-        typeCutscene.GetField("dialogueBox", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static FieldInfo allSkillsFieldInfo =
+        skillManagerType.GetField("allSkills", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Static);
     
-    private static FieldInfo fadeFieldInfo =
-        typeCutscene.GetField("fade", BindingFlags.Instance | BindingFlags.NonPublic);
-    
-    private static FieldInfo notFirstFrameFieldInfo =
-        typeCutscene.GetField("notFirstFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    private static bool firstPass = true;
+
+    private static Dictionary<string, Skill> randomizedSkills;
+
+    private static Random rand = new Random();
 
 
-    private static Type typeGettingQuestOne = AccessTools.TypeByName("GettingQuestOne");
-
-    private static FieldInfo alanFieldInfo =
-        typeGettingQuestOne.GetField("alan", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo paulFieldInfo =
-        typeGettingQuestOne.GetField("paul", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static FieldInfo givenBookFieldInfo =
-        typeGettingQuestOne.GetField("givenBook", BindingFlags.Instance | BindingFlags.NonPublic);
-
-
-    public static bool Play_CallCutsceneMethod_Prefix()
+    private static void Update_KillLeader_Postfix(DepositoryOfDoom __instance)
     {
         try
         {
+            __instance.leader.Health = 0;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(Update_KillLeader_Postfix)}:\n\t{ex}");
+        }
+    }
+    
+    
+    
+    private static bool SetVariablesPrologue_SkipDaydream_Prefix(Prologue __instance)
+    {
+        try
+        {
+            __instance.ChapterBooleans["octopaulScenePlayed"] = true;
+            __instance.ChapterBooleans["docksSceneOnePlayed"] = true;
+            __instance.ChapterBooleans["docksSceneTwoPlayed"] = true;
+            __instance.ChapterBooleans["depositoryColorAdded"] = true;
             return true;
         }
         catch (Exception ex)
         {
-            _log.LogError($"Failed in {nameof(Play_CallCutsceneMethod_Prefix)}:\n\t{ex}");
+            _log.LogError($"Failed in {nameof(SetVariablesPrologue_SkipDaydream_Prefix)}:\n\t{ex}");
             return true;
         }
     }
-
-    private static bool creations = true;
-
-
-    private static int state;
-    private static int timer;
-    private static float alpha;
-    private static bool firstFrameOfTheState;
-    private static bool notFirstFrame;
-    private static bool fade;
-    private static bool givenBook;
-    private static bool canSkip;
-    private static bool skippingCutscene;
-    private static bool firstFrameOfCutscene;
-    private static bool allowedToSkip;
-    private static Player player;
-    private static NPC alan;
-    private static NPC paul;
-    private static int topBarPos;
-    private static int botBarPos;
-    private static Camera camera;
     
-
-
-    //public override void Play()
-    public static bool Play_OverwriteChapterOneSkillShop_Prefix(Cutscene __instance)
+    
+    
+    private static void SetDestinationPortals_SkipDaydream_Postfix(MapClass __instance)
     {
         try
         {
-            //_log.LogInfo("Overwrite Method is Running!");
+            
+            __instance.Portals.Remove(DarkAlleyway.toOldWarehouse);
+            __instance.Portals.Add(DarkAlleyway.toOldWarehouse, DepositoryOfDoom.toDocks);
+            DarkAlleyway.toOldWarehouse.IsUseable = true;
 
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(SetDestinationPortals_SkipDaydream_Postfix)}:\n\t{ex}");
+        }
+    }
+    
+    
+    
+    
+    private static void LoadGameContent_CreateDictionary_Postfix()
+    {
+        try
+        {
+            randomizedSkills = (Dictionary<string, Skill>)allSkillsFieldInfo.GetValue(Game1.g.SkillManager);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(LoadGameContent_CreateDictionary_Postfix)}:\n\t{ex}");
+        }
+    }
 
-            if (creations)
+    public static void LoadPassive_RandomizeMadSkills_Postfix(MadSkills __instance)
+    {
+        try
+        {
+            
+            Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Multifaceted Approach"]);
+            Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Chaotic Confutation"]);
+            Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Startling Statements"]);
+            for (var i = 0; i < 3; i++)
             {
-                state = (int)stateFieldInfo.GetValue(__instance);
-                timer = (int)timerFieldInfo.GetValue(__instance);
-                firstFrameOfTheState = (bool)firstFrameFieldInfo.GetValue(__instance);
-                givenBook = (bool)givenBookFieldInfo.GetValue(__instance);
-                notFirstFrame = (bool)notFirstFrameFieldInfo.GetValue(__instance);
-                fade = (bool)fadeFieldInfo.GetValue(__instance);
-                alpha = Game1.currentChapter.currentScene.alpha;
-                canSkip = Game1.currentChapter.currentScene.canSkip;
-                skippingCutscene = Game1.currentChapter.currentScene.skippingCutscene;
-                firstFrameOfCutscene = Game1.currentChapter.currentScene.firstFrameOfCutscene;
-                allowedToSkip = Game1.currentChapter.currentScene.allowedToSkip;
-                player = (Player)playerFieldInfo.GetValue(__instance);
-                alan = (NPC)alanFieldInfo.GetValue(__instance);
-                paul = (NPC)paulFieldInfo.GetValue(__instance);
-                topBarPos = (int)topBarPosFieldInfo.GetValue(__instance);
-                botBarPos = (int)botBarPosFieldInfo.GetValue(__instance);
-                camera = (Camera)cameraFieldInfo.GetValue(__instance);
-                
-                creations = false;
+                var randomSkill = randomizedSkills.ElementAt(rand.Next(0, randomizedSkills.Count)).Key;
+                Game1.g.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills[randomSkill]);
+                randomizedSkills.Remove(randomSkill);
             }
-            
-            
-            
-            
-            
-            var dialogueBox = (Rectangle)dialogueBoxFieldInfo.GetValue(__instance);
-            
-            
-            
-            
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(LoadPassive_RandomizeMadSkills_Postfix)}:\n\t{ex}");
+        }
+    }
 
 
-            var game = Game1.g;
-
-           
-
-
-            // var f = typeof(Cutscene).GetMethod("Play").MethodHandle.GetFunctionPointer();
-            // var play = (Func<object>)Activator.CreateInstance(typeof(Func<object>), "Play", f);
-            // play();
-
-
-            var check = true;
-            if (game.PrimaryIsPlayerOne() && HelperMethods.KeyPressed(Keys.Escape) && !skippingCutscene &&
-                allowedToSkip && (state != 0 || !firstFrameOfCutscene))
+    public static bool UnlockPartTwoSkills_PopulateRandomSkills_Prefix(ChapterThree __instance)
+    {
+        try
+        {
+            for (var i = 0; i < 6; i++)
             {
-                if (canSkip)
-                    skippingCutscene = true;
-                else
-                    canSkip = true;
-            }
-
-            if (firstFrameOfCutscene)
-            {
-                firstFrameOfCutscene = false;
-                topBarPos = -66;
-                botBarPos = (int)Game1.virtualResolution.Y;
-            }
-
-            game.coopEndingCutscene = true;
-            if (game.coOpMode)
-            {
-                Game1.g.Player2.Position = new Vector2(Game1.g.Player.PositionX, Game1.g.Player.PositionY);
-                Game1.g.Player2.UpdatePosition();
-            }
-
-            ++timer;
-            dialogueBox = new Rectangle(0, (int)Game1.virtualResolution.Y - 120, 1280, 120);
-            firstFrameOfTheState = timer == 1;
-            if (game.CurrentChapter == null || game.CurrentChapter.CurrentMap == null ||
-                game.CurrentChapter.state == Chapter.GameState.dead)
-                check = false;
-            if (check)
-            {
-                foreach (KeyValuePair<string, InteractiveObject> interactiveObject in game.CurrentChapter.CurrentMap
-                             .InteractiveObjects)
-                    interactiveObject.Value.Update();
-            }
-
-
-            switch (state)
-            {
-                case -5:
-                    if (!givenBook)
-                    {
-                        Sound.PlayGlobalSoundEvent("object_pickup_textbook");
-                        Chapter.effectsManager.AddFoundItem("Textbook", Game1.equipmentTextures["Textbook"]);
-                        player.playerState = Player.PlayerState.relaxedStanding;
-                        givenBook = true;
-                    }
-
-                    if (!notFirstFrame)
-                    {
-                        alpha = 0.0f;
-                        timer = 0;
-                        fade = true;
-                    }
-                    notFirstFrame = true;
-                    if ((double) timer < (double) 60.0f)
-                    {
-                        alpha += 1f / 60.0f;
-                    }
-                    else
-                    {
-                        notFirstFrame = false;
-                        timer = 0;
-                        alpha = -1f;
-                        ++state;
-                        fade = false;
-                    }
-                    
-                    
-                    
-                    
-                    Chapter.effectsManager.Update();
-                    // return true;
-                    break;
-                case -4:
-                    if (firstFrameOfTheState)
-                    {
-                        game.SideQuestManager.nPCs["Skill Sorceress"].RecX = 1011;
-                        game.SideQuestManager.nPCs["Skill Sorceress"].RecY = 287;
-                        game.SideQuestManager.nPCs["Skill Sorceress"].PositionX = 1011f;
-                        game.SideQuestManager.nPCs["Skill Sorceress"].PositionY = 287f;
-                        game.SideQuestManager.nPCs["Skill Sorceress"].MapName = "Dwarves & Druids Club";
-                        game.SideQuestManager.nPCs["Skill Sorceress"].FacingRight = false;
-                        alan = game.CurrentChapter.NPCs["Alan"];
-                        paul = game.CurrentChapter.NPCs["Paul"];
-                        alan.RemoveQuest((Quest)game.ChapterOne.ReturningKeys);
-                        alan.ClearDialogue();
-                        paul.ClearDialogue();
-                        paul.MapName = "North Hall";
-                        alan.MapName = "North Hall";
-                        player.playerState = Player.PlayerState.relaxedStanding;
-                        player.FacingRight = false;
-                        player.PositionX = 3000f;
-                        player.UpdatePosition();
-                    }
-
-                    camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
-                    Chapter.effectsManager.Update();
-                    if (timer <= 60)
-                        break;
-                    ++state;
-                    timer = 0;
-                    // return true;
-                    break;
-                case -3:
-                    Chapter.effectsManager.Update();
-                    
-                    
-                    if (!notFirstFrame)
-                    {
-                        timer = 0;
-                        fade = true;
-                        alpha = 1f;
-                    }
-                    notFirstFrame = true;
-                    if ((double) timer < (double) 60f)
-                    {
-                        alpha -= 1f / 60f;
-                    }
-                    else
-                    {
-                        notFirstFrame = false;
-                        timer = 0;
-                        alpha = -1f;
-                        ++state;
-                        fade = false;
-                    }
-                    
-                    
-                    camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
-                    Chapter.effectsManager.fButtonRecs.Clear();
-                    Chapter.effectsManager.foregroundFButtonRecs.Clear();
-                    // return true;
-                    break;
-                case -2:
-                    if (firstFrameOfTheState)
-                    {
-                        alan.Dialogue.Add("Oh, hey, it's Daniel!");
-                        alan.Talking = true;
-                    }
-
-                    Sound.ChangeBackgroundMusicWithFade(Sound.MusicNames.paulandalantheme, 25f);
-                    camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
-                    if (alan.Talking)
-                        alan.UpdateInteraction();
-                    if (alan.RecX < 2760)
-                    {
-                        paul.Move(new Vector2(3f, 0.0f));
-                        alan.Move(new Vector2(3f, 0.0f));
-                    }
-                    else
-                    {
-                        paul.moveState = NPC.MoveState.standing;
-                        alan.moveState = NPC.MoveState.standing;
-                    }
-
-                    if (alan.Talking || alan.RecX < 2760)
-                    {
-                        // return true;
-                        break;
-                    }
-
-                    paul.moveState = NPC.MoveState.standing;
-                    alan.moveState = NPC.MoveState.standing;
-                    ++state;
-                    timer = 0;
-                    // return true;
-                    break;
-                case -1:
-                    if (firstFrameOfTheState)
-                    {
-                        alan.ClearDialogue();
-                        alan.Dialogue.Add(
-                            "There you are. We've already started making the rounds! A tad bit late to your second day of work, aren't you? And wearing the same clothes as yesterday, too... ");
-                        alan.Dialogue.Add(
-                            "Wait, is that a textbook? Well, look at that, Paul! Our Product Manager found us some more product.");
-                        alan.Talking = true;
-                        player.playerState = Player.PlayerState.relaxedStanding;
-                    }
-
-                    if (alan.DialogueState == 1)
-                        alan.CurrentDialogueFace = "Arrogant";
-                    alan.UpdateInteraction();
-                    camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
-                    if (alan.Talking)
-                    {
-                        // return true;
-                        break;
-                    }
-
-                    state = 1;
-                    timer = 0;
-                    // return true;
-                    break;
-                case 0:
-                    state = -5;
-                    timer = 0;
-                    // return true;
-                    break;
-                case 1:
-                    if (firstFrameOfTheState)
-                    {
-                        alan.Dialogue.Clear();
-                        paul.Dialogue.Clear();
-                        paul.AddQuest((Quest)game.ChapterOne.theProductManager);
-                        paul.Talking = true;
-                    }
-
-                    paul.CurrentDialogueFace = "Arrogant";
-                    paul.Choice = 0;
-                    camera.StartUpdate((GameObject)player, game, game.CurrentChapter.CurrentMap);
-                    paul.UpdateInteraction();
-                    if (paul.Talking)
-                    {
-                        // return true;
-                        break;
-                    }
-
-                    alan.Dialogue.Clear();
-                    alan.Dialogue.Add(
-                        "We'll talk about your mistakes after we do business. Business always comes first, Derek.");
-                    state = 0;
-                    timer = 0;
-                    player.playerState = Player.PlayerState.standing;
-                    game.CurrentChapter.state = Chapter.GameState.Game;
-                    game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Mopping Up"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Shocking Statements CH.1"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Combustible Confutation CH.1"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Fowl Mouth"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Sharp Comments"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Crushing Realization"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Combustible Confutation CH.2"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Shocking Statements CH.2"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Shocking Statements CH.3"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Combustible Confutation CH.3"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Catching Lies"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Healthy Sacrifices"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Debate Dissimilarities"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["What's Yours is Mine"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Keep Healthy"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Ride the Tide"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Cutting Corners"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Faux Pow"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Sharpen The Saw"]);
-                    // game.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills["Self Destruct"]);
-                    Chapter.effectsManager.notificationQueue.Enqueue((Notification)new NewSkillsUnlockedNotification());
-                    Chapter.effectsManager.fButtonRecs.Clear();
-                    Chapter.effectsManager.foregroundFButtonRecs.Clear();
-                    // return true;
-                    break;
+                var randomSkill = randomizedSkills.ElementAt(rand.Next(0, randomizedSkills.Count)).Key;
+                Game1.g.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills[randomSkill]);
+                randomizedSkills.Remove(randomSkill);
             }
 
             return false;
         }
         catch (Exception ex)
         {
-            _log.LogError($"Failed in {nameof(Play_OverwriteChapterOneSkillShop_Prefix)}:\n\t{ex}");
+            _log.LogError($"Failed in {nameof(Play_ModifyShopInventory_Postfix)}:\n\t{ex}");
             return true;
+        }
+    }
+
+
+    public static void Play_ModifyShopInventory_Postfix(Cutscene __instance)
+    {
+        try
+        {
+            if (__instance.State == 0 && !firstPass)
+            {
+                Game1.g.YourLocker.SkillsOnSale.Clear();
+
+                for (var i = 0; i < 20; i++)
+                {
+                    var randomSkill = randomizedSkills.ElementAt(rand.Next(0, randomizedSkills.Count)).Key;
+                    Game1.g.YourLocker.SkillsOnSale.Add(SkillManager.AllSkills[randomSkill]);
+                    randomizedSkills.Remove(randomSkill);
+                }
+            }
+
+            firstPass = false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(Play_ModifyShopInventory_Postfix)}:\n\t{ex}");
         }
     }
 }
