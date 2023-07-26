@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -27,7 +29,9 @@ public class Plugin : BasePlugin
 
         var harmony = new Harmony("SDD Randomizer");
 
-
+        /*
+         * Skill Randomizer and Tutorial Shortener
+         */
         harmony.Patch(
             original: AccessTools.Method(AccessTools.TypeByName("ChapterThree"), "UnlockPartTwoSkills"),
             prefix: new HarmonyMethod(typeof(Plugin), nameof(UnlockPartTwoSkills_PopulateRandomSkills_Prefix))
@@ -43,42 +47,53 @@ public class Plugin : BasePlugin
             original: AccessTools.Method(AccessTools.TypeByName("GettingQuestOne"), "Play"),
             postfix: new HarmonyMethod(typeof(Plugin), nameof(Play_ModifyShopInventory_Postfix))
         );
-        
+
         harmony.Patch(
             original: AccessTools.Method(AccessTools.TypeByName("MadSkills"), "LoadPassive"),
             postfix: new HarmonyMethod(typeof(Plugin), nameof(LoadPassive_RandomizeMadSkills_Postfix))
         );
-        
+
         harmony.Patch(
             original: AccessTools.Method(AccessTools.TypeByName("Prologue"), "Update"),
             prefix: new HarmonyMethod(typeof(Plugin), nameof(SetVariablesPrologue_SkipDaydream_Prefix))
         );
-        
+
         harmony.Patch(
             original: AccessTools.Method(AccessTools.TypeByName("DarkAlleyway"), "SetDestinationPortals"),
             postfix: new HarmonyMethod(typeof(Plugin), nameof(SetDestinationPortals_SkipDaydream_Postfix))
         );
-        
+
         harmony.Patch(
             original: AccessTools.Method(AccessTools.TypeByName("DepositoryOfDoom"), "Update"),
             postfix: new HarmonyMethod(typeof(Plugin), nameof(Update_KillLeader_Postfix))
         );
 
+
+        /*
+         * Door Randomizer
+         */
+
+        harmony.Patch(
+            original: AccessTools.Method(AccessTools.TypeByName("MapManager"), "CreateMaps"),
+            postfix: new HarmonyMethod(typeof(Plugin), nameof(CreateMaps_OverwritePortalLocations_Postfix))
+        );
+
         Log.LogInfo("Patch Called!");
     }
 
+    /*
+     * Skill Randomizer *****************************************************************
+     */
     private static Type skillManagerType = typeof(SkillManager);
 
     private static FieldInfo allSkillsFieldInfo =
         skillManagerType.GetField("allSkills", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Static);
-    
 
     private static bool firstPass = true;
 
     private static Dictionary<string, Skill> randomizedSkills;
 
     private static Random rand = new Random();
-
 
     private static void Update_KillLeader_Postfix(DepositoryOfDoom __instance)
     {
@@ -91,9 +106,7 @@ public class Plugin : BasePlugin
             _log.LogError($"Failed in {nameof(Update_KillLeader_Postfix)}:\n\t{ex}");
         }
     }
-    
-    
-    
+
     private static bool SetVariablesPrologue_SkipDaydream_Prefix(Prologue __instance)
     {
         try
@@ -110,28 +123,21 @@ public class Plugin : BasePlugin
             return true;
         }
     }
-    
-    
-    
+
     private static void SetDestinationPortals_SkipDaydream_Postfix(MapClass __instance)
     {
         try
         {
-            
             __instance.Portals.Remove(DarkAlleyway.toOldWarehouse);
             __instance.Portals.Add(DarkAlleyway.toOldWarehouse, DepositoryOfDoom.toDocks);
             DarkAlleyway.toOldWarehouse.IsUseable = true;
-
         }
         catch (Exception ex)
         {
             _log.LogError($"Failed in {nameof(SetDestinationPortals_SkipDaydream_Postfix)}:\n\t{ex}");
         }
     }
-    
-    
-    
-    
+
     private static void LoadGameContent_CreateDictionary_Postfix()
     {
         try
@@ -148,7 +154,6 @@ public class Plugin : BasePlugin
     {
         try
         {
-            
             Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Multifaceted Approach"]);
             Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Chaotic Confutation"]);
             Game1.g.YourLocker.SkillsOnSale.Remove(SkillManager.AllSkills["Startling Statements"]);
@@ -164,7 +169,6 @@ public class Plugin : BasePlugin
             _log.LogError($"Failed in {nameof(LoadPassive_RandomizeMadSkills_Postfix)}:\n\t{ex}");
         }
     }
-
 
     public static bool UnlockPartTwoSkills_PopulateRandomSkills_Prefix(ChapterThree __instance)
     {
@@ -185,7 +189,6 @@ public class Plugin : BasePlugin
             return true;
         }
     }
-
 
     public static void Play_ModifyShopInventory_Postfix(Cutscene __instance)
     {
@@ -208,6 +211,79 @@ public class Plugin : BasePlugin
         catch (Exception ex)
         {
             _log.LogError($"Failed in {nameof(Play_ModifyShopInventory_Postfix)}:\n\t{ex}");
+        }
+    }
+
+
+    /*
+     * Door Randomizer *****************************************************************************
+     */
+
+    private static List<Portal> allSecondaryPortals = new();
+    private static Random randomPortal = new();
+    private static Dictionary<string, Tuple<Portal, Portal>> heldPortals = new();
+    private static Dictionary<string, MapClass> copyOfMaps = new();
+
+
+    private static void GetAllPortals()
+    {
+        foreach (var map in Game1.mapManager.maps)
+        {
+            copyOfMaps.Add(map.Key,map.Value);
+            foreach (var portals in map.Value.Portals)
+            {
+                allSecondaryPortals.Add(portals.Value);
+            }
+        }
+    }
+
+    private static void CreateMaps_OverwritePortalLocations_Postfix(MapManager __instance)
+    {
+        try
+        {
+            GetAllPortals();
+            
+            foreach (var map in copyOfMaps)
+            {
+
+                foreach (var portalPair in map.Value.Portals.ToList())
+                {
+                    Portal portal1 = portalPair.Key;
+                    Portal portal2 = null;
+                    var gotFromList = false;
+                    try
+                    {
+                        foreach (var heldPortal in heldPortals)
+                        {
+                            if (map.Key.Equals(heldPortal.Key))
+                            {
+                                __instance.maps[map.Key].Portals[heldPortal.Value.Item2] = heldPortal.Value.Item1;
+                                gotFromList = true;
+                                heldPortals.Remove(heldPortal.Key);
+                                break;
+                            }
+                        }
+
+                        if (!gotFromList)
+                        {
+                            
+                            portal2 = allSecondaryPortals.ElementAt(randomPortal.Next(0, allSecondaryPortals.Count));
+                            allSecondaryPortals.Remove(portal2);
+                            
+                            __instance.maps[map.Key].Portals[portal1] = portal2;
+                            heldPortals.Add(portal2.MapName, new Tuple<Portal, Portal>(portal1, portal2));
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Failed in {nameof(CreateMaps_OverwritePortalLocations_Postfix)}:\n\t{ex}");
         }
     }
 }
