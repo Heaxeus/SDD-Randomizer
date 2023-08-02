@@ -28,6 +28,9 @@
     <Reference Include="MonoGame.Framework">
       <HintPath>..\MonoGame.Framework.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="Super Daryl Deluxe">
       <HintPath>..\Super Daryl Deluxe.exe</HintPath>
     </Reference>
