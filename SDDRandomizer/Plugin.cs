@@ -468,6 +468,8 @@ public class Plugin : BasePlugin
 
                 foreach (var portals in map.Value.Portals.ToList())
                 {
+                    if (portals.Key.MapName == "Main Lobby" && portals.Key.PortalRecX == 3060) continue;
+                    
                     allSecondaryPortals.Add(CopySinglePortal(portals.Value));
                 }
             }
@@ -512,7 +514,7 @@ public class Plugin : BasePlugin
                         
                         
                         var portal2 =
-                            allSecondaryPortals.ElementAt(1);
+                            allSecondaryPortals.ElementAt(randomPortal.Next(0, allSecondaryPortals.Count));
                         
                         foreach (var portal in allSecondaryPortals.ToList())
                         {
@@ -543,6 +545,7 @@ public class Plugin : BasePlugin
                                 break;
                             }
                         }
+                        
                         
                         foreach (var kvportals in copyOfMaps[portal2.MapName].Portals)
                         {
