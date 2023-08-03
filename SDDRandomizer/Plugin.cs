@@ -509,21 +509,52 @@ public class Plugin : BasePlugin
 
                     try
                     {
+                        
+                        
                         var portal2 =
-                            allSecondaryPortals.ElementAt(randomPortal.Next(0, allSecondaryPortals.Count));
-                        allSecondaryPortals.Remove(portal2);
+                            allSecondaryPortals.ElementAt(1);
+                        
                         foreach (var portal in allSecondaryPortals.ToList())
                         {
                             if (portal.MapName == portal1.MapName)
                             {
                                 allSecondaryPortals.Remove(portal);
-                                break;
+                                
+                            }
+                        }
+                        
+                        foreach (var portal in allSecondaryPortals.ToList())
+                        {
+                            if (portal.MapName == portal2.MapName)
+                            {
+                                allSecondaryPortals.Remove(portal2);
+                                
                             }
                         }
                         __instance.maps[portal1.MapName].Portals[portal1] = portal2;
                         __instance.maps[portal2.MapName].Portals[portal2] = portal1;
-                        copyOfMaps[portal1.MapName].Portals.Remove(portal1);
-                        copyOfMaps[portal2.MapName].Portals.Remove(portal2);
+
+
+                        foreach (var kvportals in copyOfMaps[portal1.MapName].Portals)
+                        {
+                            if (kvportals.Key.PortalRecX == portal1.PortalRecX)
+                            {
+                                copyOfMaps[portal1.MapName].Portals.Remove(kvportals.Key);
+                                break;
+                            }
+                        }
+                        
+                        foreach (var kvportals in copyOfMaps[portal2.MapName].Portals)
+                        {
+                            if (kvportals.Key.PortalRecX == portal2.PortalRecX)
+                            {
+                                copyOfMaps[portal2.MapName].Portals.Remove(kvportals.Key);
+                                break;
+                            }
+                        }
+                        
+                        
+                        
                         _log.LogMessage("Portal1: " + portal1.MapName + " Portal2: " + portal2.MapName + "\n");
                         // testCounter++;
                         // if (testCounter == 40) break;
@@ -531,7 +562,7 @@ public class Plugin : BasePlugin
                     }
                     catch (Exception e)
                     {
-                        _log.LogError("Creating maps!" + e);
+                        _log.LogError(portalPair.Key.MapName + "\n" + e);
                     }
                 }
 
