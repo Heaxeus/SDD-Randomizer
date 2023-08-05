@@ -263,7 +263,7 @@ public class Plugin : BasePlugin
                 {
                     new(CopySinglePortal(portal.Key).MapName, CopySinglePortal(portal.Key).PortalRec)
                 };
-                
+
                 var storagePortal2 = new List<Tuple<string, Rectangle>>
                 {
                     new(CopySinglePortal(portal.Value).MapName, CopySinglePortal(portal.Value).PortalRec)
@@ -276,13 +276,15 @@ public class Plugin : BasePlugin
                 // serializer.WriteObject(writer, storagePortal2);
 
 
-                var jsonPortal1 = JsonConvert.SerializeObject(new List<List<Tuple<string, Rectangle>>> {storagePortal1});
-                var jsonPortal2 = JsonConvert.SerializeObject(new List<List<Tuple<string, Rectangle>>> {storagePortal2});
-                
+                var jsonPortal1 = JsonConvert.SerializeObject(new List<List<Tuple<string, Rectangle>>>
+                    { storagePortal1 });
+                var jsonPortal2 = JsonConvert.SerializeObject(new List<List<Tuple<string, Rectangle>>>
+                    { storagePortal2 });
+
                 XDocument xNodePortal1 = JsonConvert.DeserializeXNode("{\"root\":" + jsonPortal1 + '}', "root");
                 XDocument xNodePortal2 = JsonConvert.DeserializeXNode("{\"root\":" + jsonPortal2 + '}', "root");
-                
-                
+
+
                 doc.Root.Add(new XElement("index" + counter,
                     new XElement(xNodePortal1.Root),
                     new XElement(xNodePortal2.Root)));
@@ -466,7 +468,6 @@ public class Plugin : BasePlugin
         }
     }
 
-    private static int testCounter = 0;
     private static Portal portal1;
     private static Portal portal2;
 
@@ -483,89 +484,71 @@ public class Plugin : BasePlugin
             }
 
             GetAllPortals();
-            foreach (var map in copyOfMaps.ToList())
+
+            try
             {
-                foreach (var portalPair in map.Value.Portals.ToList())
+                while (allSecondaryPortals.Count != 0)
                 {
-                    try
+                    foreach (var ogmaps in Game1.mapManager.maps.ToList())
                     {
-                        var check = false;
-                        foreach (var ogmaps in Game1.mapManager.maps)
+                        foreach (var ogportals1 in ogmaps.Value.Portals.ToList())
                         {
-                            foreach (var ogportals in ogmaps.Value.Portals)
+                            foreach (var portal in allSecondaryPortals)
                             {
-                                if (portalPair.Key.MapName == ogportals.Key.MapName &&
-                                    portalPair.Key.PortalRec == ogportals.Key.PortalRec)
+                                if (portal.MapName == ogportals1.Key.MapName)
                                 {
-                                    portal1 = ogportals.Key;
-                                    check = true;
+                                }
+                            }
+
+
+                                portal1 = ogportals1.Key;
+
+
+                            // var randomPortalChoice =
+                            //     allSecondaryPortals.ElementAt(randomPortal.Next(0, allSecondaryPortals.Count));
+
+                            var randomPortalChoice =
+                                allSecondaryPortals.ElementAt(1);
+                            foreach (var ogportals2 in Game1.mapManager.maps[randomPortalChoice.MapName].Portals)
+                            {
+                                if (randomPortalChoice.PortalRec == ogportals2.Key.PortalRec)
+                                {
+                                    portal2 = ogportals2.Key;
                                     break;
                                 }
                             }
 
-                            if (check) break;
-                        }
 
-
-                        // var randomPortalChoice =
-                        //     allSecondaryPortals.ElementAt(randomPortal.Next(0, allSecondaryPortals.Count));
-                        
-                        var randomPortalChoice =
-                             allSecondaryPortals.ElementAt(1);
-                        foreach (var ogportals in Game1.mapManager.maps[randomPortalChoice.MapName].Portals)
-                        {
-                            if (randomPortalChoice.PortalRec == ogportals.Key.PortalRec)
+                            foreach (var portal in allSecondaryPortals.ToList())
                             {
-                                portal2 = ogportals.Key;
-                                break;
+                                if (portal.MapName == portal1.MapName)
+                                {
+                                    allSecondaryPortals.Remove(portal);
+                                }
                             }
-                        }
 
-
-                        foreach (var portal in allSecondaryPortals.ToList())
-                        {
-                            if (portal.MapName == portal1.MapName)
+                            foreach (var portal in allSecondaryPortals.ToList())
                             {
-                                allSecondaryPortals.Remove(portal);
+                                if (portal.MapName == portal2.MapName)
+                                {
+                                    allSecondaryPortals.Remove(portal);
+                                }
                             }
+
+                            __instance.maps[portal1.MapName].Portals[portal1] = portal2;
+                            __instance.maps[portal2.MapName].Portals[portal2] = portal1;
+
+
+                            _log.LogMessage("Portal1: " + portal1.MapName + " Portal2: " + portal2.MapName + "\n");
                         }
-
-                        foreach (var portal in allSecondaryPortals.ToList())
-                        {
-                            if (portal.MapName == portal2.MapName)
-                            {
-                                allSecondaryPortals.Remove(portal2);
-                            }
-                        }
-
-                        __instance.maps[portal1.MapName].Portals[portal1] = portal2;
-                        __instance.maps[portal2.MapName].Portals[portal2] = portal1;
-
-
-                        foreach (var kvportals in copyOfMaps[portal2.MapName].Portals)
-                        {
-                            if (kvportals.Key.PortalRecX == portal2.PortalRecX)
-                            {
-                                copyOfMaps[portal2.MapName].Portals.Remove(kvportals.Key);
-                                break;
-                            }
-                        }
-
-
-                        _log.LogMessage("Portal1: " + portal1.MapName + " Portal2: " + portal2.MapName + "\n");
-                        // testCounter++;
-                        // if (testCounter == 40) break;
-                    }
-                    catch (Exception e)
-                    {
-                        _log.LogError(portalPair.Key.MapName + "\n" + e);
                     }
                 }
-
-                copyOfMaps.Remove(map.Key);
-
-                //if (testCounter == 40) break;
             }
+            catch (Exception e)
+            {
+                _log.LogError(portal1.MapName + "\n" + e);
+            }
+
 
             SaveDoorsToFile();
             LoadDoorsFromFile();
